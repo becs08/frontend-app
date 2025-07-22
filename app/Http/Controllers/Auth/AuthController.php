@@ -36,6 +36,12 @@ class AuthController extends Controller
         }
 
         $data = $response->json();
+        
+        \Log::info('API Auth Response:', ['data' => $data, 'status' => $response->status()]);
+
+        if (!isset($data['token']) || !isset($data['user'])) {
+            return back()->withErrors(['email' => ['Format de réponse invalide de l\'API.']])->withInput();
+        }
 
         Session::put('api_token', $data['token']);
         Session::put('user', $data['user']);
@@ -69,6 +75,12 @@ class AuthController extends Controller
         }
 
         $data = $response->json();
+        
+        \Log::info('API Auth Response:', ['data' => $data, 'status' => $response->status()]);
+
+        if (!isset($data['token']) || !isset($data['user'])) {
+            return back()->withErrors(['email' => ['Format de réponse invalide de l\'API.']])->withInput();
+        }
 
         Session::put('api_token', $data['token']);
         Session::put('user', $data['user']);
