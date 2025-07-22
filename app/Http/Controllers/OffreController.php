@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Services\ApiClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 
 class OffreController extends Controller
 {
@@ -14,13 +16,78 @@ class OffreController extends Controller
     {
         $this->apiClient = $apiClient;
     }
+    
+    /**
+     * Optimized index method using concurrent API requests and caching
+     */
+    public function indexOptimized(Request $request)
+    {
+        $startTime = microtime(true);
+        
+        $filters = $request->only(['search', 'categorie', 'localisation', 'type_offre', 'page']);
+        
+        // Check if categories are cached
+        $categories = Cache::remember('categories', 3600, function () {
+            $baseUrl = config('app.api_base_url', 'http://localhost:8000/api');
+            $timeout = config('app.api_timeout', 30);
+            $token = Session::get('api_token');
+            $headers = $token ? ['Authorization' => 'Bearer ' . $token] : [];
+            
+            $response = Http::timeout($timeout)
+                ->withHeaders($headers)
+                ->get($baseUrl . '/categories');
+                
+            return $response->successful() ? $response->json() : [];
+        });
+        
+        // Prepare API request for offres
+        $baseUrl = config('app.api_base_url', 'http://localhost:8000/api');
+        $timeout = config('app.api_timeout', 30);
+        $token = Session::get('api_token');
+        $headers = $token ? ['Authorization' => 'Bearer ' . $token] : [];
+        
+        // Get offres
+        $offresResponse = Http::timeout($timeout)
+            ->withHeaders($headers)
+            ->get($baseUrl . '/offres?' . http_build_query($filters));
+        
+        \Log::info('API requests took: ' . (microtime(true) - $startTime) . ' seconds');
+        
+        // Check if offres request was successful
+        if (!$offresResponse->successful()) {
+            return back()->withErrors(['error' => 'Erreur lors du chargement des offres']);
+        }
+        
+        $data = $offresResponse->json();
+        
+        $totalTime = microtime(true) - $startTime;
+        \Log::info('Total indexOptimized execution time: ' . $totalTime . ' seconds');
+        
+        return view('offres.index', [
+            'offres' => $data,
+            'categories' => $categories,
+            'filters' => $filters
+        ]);
+    }
 
     public function index(Request $request)
     {
+        $startTime = microtime(true);
+        
         $filters = $request->only(['search', 'categorie', 'localisation', 'type_offre', 'page']);
 
+        // Log start of API calls
+        \Log::info('Starting offres.index API calls');
+        
+        $offresStartTime = microtime(true);
         $response = $this->apiClient->getOffres($filters);
+        $offresEndTime = microtime(true);
+        \Log::info('getOffres API call took: ' . ($offresEndTime - $offresStartTime) . ' seconds');
+        
+        $categoriesStartTime = microtime(true);
         $categoriesResponse = $this->apiClient->getCategories();
+        $categoriesEndTime = microtime(true);
+        \Log::info('getCategories API call took: ' . ($categoriesEndTime - $categoriesStartTime) . ' seconds');
 
         if (!$response->successful()) {
             return back()->withErrors(['error' => 'Erreur lors du chargement des offres']);
@@ -29,11 +96,19 @@ class OffreController extends Controller
         $data = $response->json();
         $categories = $categoriesResponse->successful() ? $categoriesResponse->json() : [];
 
-        return view('offres.index', [
+        $viewStartTime = microtime(true);
+        $result = view('offres.index', [
             'offres' => $data,
             'categories' => $categories,
             'filters' => $filters
         ]);
+        $viewEndTime = microtime(true);
+        \Log::info('View rendering took: ' . ($viewEndTime - $viewStartTime) . ' seconds');
+        
+        $totalTime = microtime(true) - $startTime;
+        \Log::info('Total offres.index execution time: ' . $totalTime . ' seconds');
+        
+        return $result;
     }
 
     public function show($id)
@@ -170,5 +245,14 @@ class OffreController extends Controller
         $data = $response->json();
 
         return view('offres.mes-offres', ['offres' => $data]);
+    }
+    
+    /**
+     * Clear categories cache
+     */
+    public function clearCategoriesCache()
+    {
+        Cache::forget('categories');
+        return response()->json(['message' => 'Categories cache cleared']);
     }
 }

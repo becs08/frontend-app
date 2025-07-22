@@ -26,9 +26,21 @@ class ApiClient
         }
 
         try {
+            $startTime = microtime(true);
+            Log::info("Starting API request: {$method} {$this->baseUrl}{$endpoint}");
+            
             $response = Http::timeout($this->timeout)
                 ->withHeaders($headers)
                 ->$method($this->baseUrl . $endpoint, $data);
+
+            $endTime = microtime(true);
+            $duration = $endTime - $startTime;
+            
+            Log::info("API request completed: {$method} {$endpoint} - Status: {$response->status()} - Duration: {$duration}s");
+            
+            if ($duration > 0.5) {
+                Log::warning("Slow API request detected: {$method} {$endpoint} took {$duration} seconds");
+            }
 
             return $response;
         } catch (\Exception $e) {

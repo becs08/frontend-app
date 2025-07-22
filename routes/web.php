@@ -18,8 +18,47 @@ Route::get('/', function () {
     return redirect()->route('offres.index');
 });
 
+// Debug route for performance testing
+Route::get('/debug/offres-performance', function () {
+    $startTime = microtime(true);
+    
+    $apiClient = app(\App\Services\ApiClient::class);
+    
+    // Test API endpoints individually
+    $results = [];
+    
+    // Test getOffres
+    $offresStart = microtime(true);
+    $offresResponse = $apiClient->getOffres([]);
+    $offresTime = microtime(true) - $offresStart;
+    $results['getOffres'] = [
+        'time' => $offresTime,
+        'status' => $offresResponse->status(),
+        'successful' => $offresResponse->successful()
+    ];
+    
+    // Test getCategories
+    $categoriesStart = microtime(true);
+    $categoriesResponse = $apiClient->getCategories();
+    $categoriesTime = microtime(true) - $categoriesStart;
+    $results['getCategories'] = [
+        'time' => $categoriesTime,
+        'status' => $categoriesResponse->status(),
+        'successful' => $categoriesResponse->successful()
+    ];
+    
+    $totalTime = microtime(true) - $startTime;
+    
+    return response()->json([
+        'total_time' => $totalTime,
+        'api_base_url' => config('app.api_base_url'),
+        'api_timeout' => config('app.api_timeout'),
+        'results' => $results
+    ]);
+});
+
 // Routes publiques
-Route::get('/offres', [OffreController::class, 'index'])->name('offres.index');
+Route::get('/offres', [OffreController::class, 'indexOptimized'])->name('offres.index');
 Route::get('/offres/{id}', [OffreController::class, 'show'])->name('offres.show');
 
 // Auth routes
